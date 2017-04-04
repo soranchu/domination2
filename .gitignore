@@ -1,0 +1,7 @@
+/.DS_Store
+.hg
+*.pyc
+/BUILD
+/nRF51822
+/BLE_API
+/mbed

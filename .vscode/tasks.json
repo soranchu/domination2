@@ -1,0 +1,26 @@
+{
+    "version": "0.1.0",
+    "command": "sh",
+    "isShellCommand": true,
+    "showOutput": "always",
+    "args": ["-c"],
+    "tasks": [
+      {
+        "taskName": "all",
+        "suppressTaskName": true,
+        "args": [
+          "mbed compile -v && cp -v ./BUILD/RBLAB_BLENANO/GCC_ARM/ble-discover.hex /Volumes/DAPLINK/"
+        ]
+      },
+      {
+        "taskName": "build",
+        "suppressTaskName": true,
+        "args": ["mbed compile -v"]
+      },
+      {
+        "taskName": "deploy",
+        "suppressTaskName": true,
+        "args": ["cp", "-v", "./BUILD/RBLAB_BLENANO/GCC_ARM/ble-discover.hex", "/Volumes/DAPLINK/"]
+      }
+    ]
+}

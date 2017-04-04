@@ -1,0 +1,7 @@
+{
+  "files.associations": {},
+  "taskButtons.buttons": [{
+    "task": "all",
+    "buttonLabel": "Build & Deploy $(beaker)"
+  }]
+}

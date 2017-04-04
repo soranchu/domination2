@@ -1,0 +1,41 @@
+{
+    "configurations": [
+        {
+            "name": "mbed",
+            "includePath": [
+                ".",
+                "./mbed/99b5ccf27215",
+                "/usr/local/Cellar/gcc-arm-none-eabi/20160928/arm-none-eabi/include",
+                "/usr/local/Cellar/gcc-arm-none-eabi/20160928/arm-none-eabi/include/c++/5.4.1"
+            ],
+            "browse" : {
+                "limitSymbolsToIncludedHeaders" : true,
+                "databaseFilename" : ""
+            }
+        },
+        {
+            "name": "Mac",
+            "includePath": ["./mbed/99b5ccf27215"],
+            "browse" : {
+                "limitSymbolsToIncludedHeaders" : true,
+                "databaseFilename" : ""
+            }
+        },
+        {
+            "name": "Linux",
+            "includePath": ["/usr/include"],
+            "browse" : {
+                "limitSymbolsToIncludedHeaders" : true,
+                "databaseFilename" : ""
+            }
+        },
+        {
+            "name": "Win32",
+            "includePath": ["c:/Program Files (x86)/Microsoft Visual Studio 14.0/VC/include"],
+            "browse" : {
+                "limitSymbolsToIncludedHeaders" : true,
+                "databaseFilename" : ""
+            }
+        }
+    ]
+}
