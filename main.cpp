@@ -41,13 +41,13 @@ DEALINGS IN THE SOFTWARE.
 #include "spioled96x64.h"
 #include "mcp23s08.h"
 #include <string.h>
-#include <set>
 #include <algorithm>
 #include "neopixel.h"
+#include "TagDetector.h"
 
 BLE ble;
 
-const uint8_t DEVICE_NAME[] = "dominator-2";
+static const uint8_t DEVICE_NAME[] = "dominator-2";
 
 Serial pc(USBTX, USBRX);
 
@@ -59,119 +59,14 @@ volatile bool interrupted = false;
 bool tick = false;
 neopixel_strip_t strip;
 uint8_t neoPixelPin = P0_10;
-uint8_t ledsPerStrip = 15;
-uint8_t red = 255;
+uint8_t ledsPerStrip = 12;
+uint8_t red = 0;
 uint8_t green = 0;
-uint8_t blue = 159;
+uint8_t blue = 0;
 uint32_t n = 0;
-struct Tag_t {
-  const BLEProtocol::AddressBytes_t address; /**< The BLE address. */
-  const char type;
-};
-const uint8_t TAG_SIZE = 30;
-Tag_t const TAGS[] = {
-    {{0xfc, 0x58, 0xfa, 0x19, 0xdf, 0x7f}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbc, 0x81}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbe, 0x3b}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbe, 0x18}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xc6, 0x22}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xc0, 0x8b}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbc, 0xc8}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xcc, 0x27}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbd, 0xc8}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xbe, 0x34}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xc5, 0xef}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xce, 0xb1}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xdf, 0x78}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xc6, 0x09}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xc2, 0x84}, 'R'},  // R
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe6, 0xfb}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe7, 0x93}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0x77, 0x4f}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xdf, 0xc5}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe5, 0x99}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe8, 0x34}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe7, 0xcb}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe5, 0x4a}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe4, 0x8c}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe6, 0xdb}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0x77, 0x82}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0x68, 0x8a}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe6, 0xcf}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe5, 0x47}, 'Y'},  // Y
-    {{0xfc, 0x58, 0xfa, 0x19, 0xe5, 0x77}, 'Y'}   // Y
-};
-struct Team_t {
-  uint8_t tagCount;
-  char type;
-};
-Team_t teams[] = {{0, 'R'}, {0, 'Y'}};
-int8_t nodeState = -1;
-const uint8_t TEAM_RED = 0;
-const uint8_t TEAM_YELLOW = 1;
+int8_t dir = 1;
 
-struct TagStatus_t {
-  volatile bool visible;
-  volatile uint8_t visibleCount;
-};
-
-TagStatus_t statuses[30] = {0};
-
-struct Peripheral_t {
-  BLEProtocol::AddressBytes_t address; /**< The BLE address. */
-
-  /**
-   * Construct an Address_t object with the supplied type and address.
-   *
-   * @param[in] typeIn
-   *              The BLE address type.
-   * @param[in] addressIn
-   *              The BLE address.
-   */
-  Peripheral_t(const BLEProtocol::AddressBytes_t addressIn) {
-    std::copy(addressIn, addressIn + BLEProtocol::ADDR_LEN, address);
-  }
-
-  /**
-   * Empty constructor.
-   */
-  Peripheral_t() : address() {}
-};
-
-bool tagIdxToTeam(uint8_t idx) {
-  return idx < 15 ? TEAM_RED : TEAM_YELLOW;
-}
-
-bool operator<(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return memcmp(t1.address, t2.address, BLEProtocol::ADDR_LEN) < 0;
-}
-bool operator>(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return t2 < t1;
-}
-bool operator<=(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return !(t1 > t2);
-}
-bool operator>=(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return !(t1 < t2);
-}
-bool operator==(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return !(t1 < t2) && !(t2 > t2);
-}  // ...(*1)
-bool operator!=(const Peripheral_t& t1, const Peripheral_t& t2) {
-  return !(t1 == t2);
-}
-
-std::set<Peripheral_t> devices;
-static const uint8_t SERVICES[6] = {0x03, 0x18, 0x02, 0x18, 0x04, 0x18};
-
-int8_t findTagId(const BLEProtocol::AddressBytes_t address) {
-  for (uint8_t i = 0; i < TAG_SIZE; ++i) {
-    if (memcmp(address, TAGS[i].address, 6) == 0) {
-      return i;
-    }
-  }
-  return -1;
-}
+TagDetector tagDetector;
 
 volatile uint8_t buttonR = 1;
 volatile uint8_t buttonY = 1;
@@ -192,21 +87,21 @@ void initNeoPixel () {
   // neoPixelOut = 1;
   neopixel_init(&strip, neoPixelPin, ledsPerStrip);
   neopixel_clear(&strip);
-  neopixel_set_color_and_show(&strip, 0, 255, 255, 255);
+  neopixel_set_color_and_show(&strip, 0, 80, 10, 10);
 }
 
 void radioNotificationCallback (bool radioEnabled) {
   if (!radioEnabled) {
-    switch (nodeState) {
-      case TEAM_RED: 
+    switch (tagDetector.getState()) {
+      case TagDetector::TEAM_RED: 
         red = 255;
-        green = 10;
-        blue = 10;
+        green = 30;
+        blue = 30;
         break;
-      case TEAM_YELLOW: 
-        red = 255;
-        green = 255;
-        blue = 10;
+      case TagDetector::TEAM_YELLOW: 
+        red = 225;
+        green = 225;
+        blue = 30;
         break;
       default: 
         red = 90;
@@ -215,16 +110,17 @@ void radioNotificationCallback (bool radioEnabled) {
         break;
     }
     for (uint8_t p = 0; p < ledsPerStrip; ++p) {
-        if (n%ledsPerStrip == p) {
-          neopixel_set_color(&strip, p, red, green, blue);
-        } else {
-          neopixel_set_color(&strip, p, red - 10, green - 10, blue - 10);
-        }
+      neopixel_set_color(&strip, p, red - n*3, green - n*3, blue - n*3);
     }
     __disable_irq();
     neopixel_show(&strip);
     __enable_irq();
-    n++;
+    n += dir;
+    if (dir > 0 && n >= 20) {
+      dir = -1;
+    } else if (dir < 0 && n == 0) {
+      dir = +1;
+    }
   }
 }
 
@@ -241,26 +137,7 @@ void tickerCallback() {
   } else {
     ioxp->gpioPort(0b10000000);
   }
-  teams[TEAM_RED].tagCount = 0;
-  teams[TEAM_YELLOW].tagCount = 0;
-
-  for (uint8_t i = 0; i < TAG_SIZE; ++i) {
-    TagStatus_t& s = statuses[i];
-    if (s.visibleCount > 0) {
-      s.visibleCount--;
-    }
-    if (s.visibleCount > 0) {
-      teams[tagIdxToTeam(i)].tagCount++;
-    }
-  }
-  if (teams[TEAM_RED].tagCount == teams[TEAM_YELLOW].tagCount) {
-    nodeState = -1;
-  } else if (teams[TEAM_RED].tagCount > teams[TEAM_YELLOW].tagCount) {
-    nodeState = 0;
-  } else {
-    nodeState = 1;
-  }
-
+  tagDetector.tick();
   updateButtonState();
 
   oled->locate(90, 56);
@@ -292,45 +169,14 @@ void tickerCallback() {
   }
 
   oled->ChangeFontColor(0b1111100000000000);
-  oled->printf("R:%02d ", teams[TEAM_RED].tagCount);
+  oled->printf("R:%02d ", tagDetector.getCount(TagDetector::TEAM_RED));
 
   oled->ChangeFontColor(0b1111111111100000);
-  oled->printf("Y:%02d", teams[TEAM_YELLOW].tagCount);
+  oled->printf("Y:%02d", tagDetector.getCount(TagDetector::TEAM_YELLOW));
 
   tickCount++;
 }
 
-void scanCallback(const Gap::AdvertisementCallbackParams_t* params) {
-  // parse the advertising payload, looking for data type COMPLETE_LOCAL_NAME
-  // The advertising payload is a collection of key/value records where
-  // byte 0: length of the record excluding this byte
-  // byte 1: The key, it is the type of the data
-  // byte [2..N] The value. N is equal to byte0 - 1
-
-  for (uint8_t i = 0; i < params->advertisingDataLen; ++i) {
-    const uint8_t record_length = params->advertisingData[i];
-    if (record_length == 0) {
-      continue;
-    }
-    const uint8_t type = params->advertisingData[i + 1];
-    const uint8_t* value = params->advertisingData + i + 2;
-    const uint8_t value_length = record_length - 1;
-
-    i += record_length;
-    if (value_length == 6 && memcmp(value, SERVICES, 6) == 0) {
-      Peripheral_t peri(params->peerAddr);
-      std::pair<std::set<Peripheral_t>::iterator, bool> ret =
-          devices.insert(peri);
-      if (ret.second) {
-      }
-      int8_t idx = findTagId(ret.first->address);
-      if (idx >= 0) {
-        statuses[idx].visibleCount = 10;
-      }
-      break;
-    }
-  }
-}
 
 void onStartDfu() {
   ble.stopScan();
@@ -419,7 +265,7 @@ int main(void) {
   
   // ble.setActiveScan(true);
   pc.printf("Discover Start \r\n");
-  ble.startScan(scanCallback);
+  ble.gap().startScan(&tagDetector, &TagDetector::scanCallback);
   pc.printf("Discover called \r\n");
   while (1) {
     ble.waitForEvent();
