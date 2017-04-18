@@ -1,7 +1,7 @@
 #include "mbed.h"
 #include "ble/BLE.h"
 #include "DFUService.h"
-#include "spioled96x64.h"
+#include "ssd1331.h"
 #include "mcp23s08.h"
 #include <string.h>
 #include <algorithm>
@@ -14,7 +14,7 @@ static const uint8_t DEVICE_NAME[] = "dominator-2";
 
 Serial pc(USBTX, USBRX);
 
-SPIOLED96x64* oled;
+ssd1331* oled;
 mcp23s08* ioxp;
 DigitalOut rst(P0_15);
 InterruptIn ioInt(P0_28);
@@ -103,21 +103,21 @@ void tickerCallback() {
   tagDetector.tick();
   updateButtonState();
 
-  oled->locate(90, 56);
+  oled->locate(89, 56);
   if (buttonR) {
-    oled->ChangeFontColor(0b1111100000000000);
+    oled->foreground(0b1111100000000000);
     oled->printf("*");
   } else {
     oled->printf(" ");
   }
   oled->locate(0, 56);
   if (buttonY) {
-    oled->ChangeFontColor(0b1111111111100000);
+    oled->foreground(0b1111111111100000);
     oled->printf("*");
   } else {
     oled->printf(" ");
   }
-  oled->ChangeFontColor(0xffff);
+  oled->foreground(0xffff);
   oled->locate(0, 0);
   uint32_t seconds = tickCount / 5;
   uint8_t minute = seconds / 60;
@@ -131,10 +131,10 @@ void tickerCallback() {
     oled->printf("%02d %02d ", minute, sec);
   }
 
-  oled->ChangeFontColor(0b1111100000000000);
+  oled->foreground(0b1111100000000000);
   oled->printf("R:%02d ", tagDetector.getCount(TagDetector::TEAM_RED));
 
-  oled->ChangeFontColor(0b1111111111100000);
+  oled->foreground(0b1111111111100000);
   oled->printf("Y:%02d", tagDetector.getCount(TagDetector::TEAM_YELLOW));
 
   tickCount++;
@@ -179,7 +179,8 @@ void reset() {
   wait_ms(100);
 }
 void initOled() {
-  oled = new SPIOLED96x64(P0_7, P0_15, P0_29, P0_4, P0_8, P0_5);
+  oled = new ssd1331(P0_7, P0_15, P0_29, P0_4, P0_8, P0_5);
+  oled->set_font(NULL);
 }
 
 int main(void) {

@@ -112,7 +112,7 @@ ssd1331::ssd1331(PinName cs_pin, PinName rst_pin, PinName a0_pin, PinName mosi_p
 void ssd1331::Init(void)
 {
     spi.format(8,3);
-    spi.frequency(20000000);  // 12Mhz max for KL25z
+    spi.frequency(24000000);  // 12Mhz max for KL25z
 
     // reset
     wait_ms(200);
@@ -706,7 +706,7 @@ int ssd1331::_putc( int c )
 
 void ssd1331::pixel(uint8_t x,uint8_t y,uint16_t Color)
 {
-    unsigned char cmd[7]= {Set_Column_Address,0x00,0x00,Set_Row_Address,0x00,0x00};
+    unsigned char cmd[6]= {Set_Column_Address,0x00,0x00,Set_Row_Address,0x00,0x00};
     if ((x>width)||(y>height)) return ;
     cmd[1] = (unsigned char)x;
     cmd[2] = (unsigned char)x;
@@ -718,7 +718,7 @@ void ssd1331::pixel(uint8_t x,uint8_t y,uint16_t Color)
 
 void ssd1331::Maxwindow()
 {    
-    unsigned char cmd[7]= {Set_Column_Address,0x00,0x5F,Set_Row_Address,0x00,0x3F};
+    unsigned char cmd[6]= {Set_Column_Address,0x00,0x5F,Set_Row_Address,0x00,0x3F};
     RegWriteM(cmd, 6);
 }
 
@@ -731,9 +731,9 @@ void ssd1331::window(uint8_t x, uint8_t y, uint8_t w, uint8_t h)
     _x2 = x + w - 1;    // end x
     _y1 = y;            // start y
     _y2 = y + h - 1;    // end y
-    unsigned char cmd[7]= {Set_Column_Address,0x00,0x00,Set_Row_Address,0x00,0x00};
+    unsigned char cmd[6]= {Set_Column_Address,0x00,0x00,Set_Row_Address,0x00,0x00};
     RegWriteM(cmd, 6);
-    unsigned char cmd2[7]= {Set_Column_Address,_x1,_x2,Set_Row_Address,_y1,_y2};
+    unsigned char cmd2[6]= {Set_Column_Address,_x1,_x2,Set_Row_Address,_y1,_y2};
     RegWriteM(cmd2, 6);
 }
 
