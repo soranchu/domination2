@@ -112,7 +112,7 @@ ssd1331::ssd1331(PinName cs_pin, PinName rst_pin, PinName a0_pin, PinName mosi_p
 void ssd1331::Init(void)
 {
     spi.format(8,3);
-    spi.frequency(24000000);  // 12Mhz max for KL25z
+    spi.frequency(20000000);  // 12Mhz max for KL25z
 
     // reset
     wait_ms(200);
@@ -485,20 +485,21 @@ void ssd1331::Bitmap16(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t
     Maxwindow();
 }
 
+const uint8_t OffsetPixelWidth =   18;
+const uint8_t  OffsetPixelHeigh =   22;
+const uint8_t  OffsetFileSize =     34;
+const uint8_t  OffsetPixData =      10;
+const uint8_t  OffsetBPP =          28;
 int ssd1331::Bitmap16RAM(uint8_t x, uint8_t y, unsigned char *Name_BMP)
 {   
-    #define OffsetPixelWidth    18
-    #define OffsetPixelHeigh    22
-    #define OffsetFileSize      34
-    #define OffsetPixData       10
-    #define OffsetBPP           28
     char filename[50];
     unsigned char BMP_Header[54];
     unsigned short BPP_t;
     unsigned int PixelWidth,PixelHeigh,start_data;
     char * buffer;
     size_t result;
-    int fileSize,padd,i,j;
+    uint16_t fileSize, i, j;
+    int16_t padd;
      
     i=0;
     while (*Name_BMP!='\0') {
@@ -818,8 +819,8 @@ void  ssd1331::DataWrite_to(uint16_t Dat)
 {
     DC = 1;    // DATA
     CS = 0;    // CS enable    
-    spi.write((unsigned char)((Dat >> 8)));
-    spi.write((unsigned char)(Dat));
+    spi.write((unsigned char)((Dat >> 8) & 0x00ff));
+    spi.write((unsigned char)(Dat & 0x00ff));
     CS = 1;    // CS dissable
 }
 

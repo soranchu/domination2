@@ -14,13 +14,15 @@
       },
       {
         "taskName": "build",
+        "command": "mbed",
         "suppressTaskName": true,
-        "args": ["mbed compile -v"]
+        "args": ["compile", "-v"]
       },
       {
         "taskName": "deploy",
+        "command": "cp",
         "suppressTaskName": true,
-        "args": ["cp", "-v", "./BUILD/RBLAB_BLENANO/GCC_ARM/ble-discover.hex", "/Volumes/DAPLINK/"]
+        "args": ["-v", "./BUILD/RBLAB_BLENANO/GCC_ARM/ble-discover.hex", "/Volumes/DAPLINK/"]
       }
     ]
 }
