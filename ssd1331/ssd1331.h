@@ -38,16 +38,16 @@
 
 // Basic RGB color definitions         RED GREEN BLUE values                         
 
-#define Black           0x0000      //   0,   0,   0 
-#define LightGrey       0xC618      // 192, 192, 192 
-#define DarkGrey        0x7BEF      // 128, 128, 128 
-#define Red             0xF800      // 255,   0,   0 
-#define Green           0x07E0      //   0, 255,   0 
-#define Cyan            0x07FF      //   0, 255, 255 
-#define Blue            0x001F      //   0,   0, 255 
-#define Magenta         0xF81F      // 255,   0, 255 
-#define Yellow          0xFFE0      // 255, 255,   0 
-#define White           0xFFFF      // 255, 255, 255 
+#define ColorBlack           0x0000      //   0,   0,   0 
+#define ColorLightGrey       0xC618      // 192, 192, 192 
+#define ColorDarkGrey        0x7BEF      // 128, 128, 128 
+#define ColorRed             0xF800      // 255,   0,   0 
+#define ColorGreen           0x07E0      //   0, 255,   0 
+#define ColorCyan            0x07FF      //   0, 255, 255 
+#define ColorBlue            0x001F      //   0,   0, 255 
+#define ColorMagenta         0xF81F      // 255,   0, 255 
+#define ColorYellow          0xFFE0      // 255, 255,   0 
+#define ColorWhite           0xFFFF      // 255, 255, 255 
 
 // example code
 /*

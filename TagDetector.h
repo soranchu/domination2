@@ -36,6 +36,11 @@ public:
     */
     Peripheral_t() : address() {}
   };
+
+  void setSenseLevel (int8_t lv) {
+    senseLevel = lv;
+  }
+
   static const uint8_t TEAM_RED = 0;
   static const uint8_t TEAM_YELLOW = 1;
 
@@ -61,6 +66,7 @@ private:
   int8_t nodeState;
   TagStatus_t statuses[TAG_SIZE];
   std::set<Peripheral_t> devices;
+  int8_t senseLevel;
 
   bool tagIdxToTeam(uint8_t idx) {
     return idx < 15 ? TEAM_RED : TEAM_YELLOW;

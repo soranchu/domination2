@@ -112,7 +112,7 @@ ssd1331::ssd1331(PinName cs_pin, PinName rst_pin, PinName a0_pin, PinName mosi_p
 void ssd1331::Init(void)
 {
     spi.format(8,3);
-    spi.frequency(24000000);  // 12Mhz max for KL25z
+    spi.frequency(24 * 1000 * 1000);  // 12Mhz max for KL25z
 
     // reset
     wait_ms(200);

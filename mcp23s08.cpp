@@ -22,7 +22,7 @@ mcp23s08::mcp23s08(PinName mosi,
   _intControl = 0x00;
 
   format(8, 3);
-  frequency(2000000);
+  frequency(2 * 1000 * 1000); //2.4MHz
 
   postSetup(haenAdrs);
 }
@@ -54,7 +54,7 @@ void mcp23s08::postSetup(const uint8_t haenAdrs) {
 void mcp23s08::begin(bool protocolInitOverride) {
   cs = 1;
   wait(0.1);
-  _useHaen == 1 ? writeByte(IOCON, 0b00101000) : writeByte(IOCON, 0b00100000);
+  _useHaen == 1 ? writeByte(IOCON, 0b00111000) : writeByte(IOCON, 0b00110000);
 }
 
 void mcp23s08::gpioPinMode(uint8_t mode) {
@@ -93,8 +93,7 @@ uint8_t mcp23s08::gpioDigitalReadFast(uint8_t pin) {
 }
 
 void mcp23s08::portPullup(uint8_t data) {
-  _gpioState = data;
-  writeByte(GPPU, _gpioState);
+  writeByte(GPPU, data);
 }
 
 void mcp23s08::gpioDigitalWrite(uint8_t pin, bool value) {

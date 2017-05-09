@@ -1,25 +1,33 @@
 #include "mbed.h"
 #include "ble/BLE.h"
-#include "DFUService.h"
-#include "ssd1331.h"
+// #include "DFUService.h"
+#include "nrf51.h"
 #include "mcp23s08.h"
 #include <string.h>
 #include <algorithm>
 #include "neopixel.h"
 #include "TagDetector.h"
+#include "IM920.h"
+#include "DisplayController.h"
+#include "GameStatus.h"
 
 BLE ble;
-
 static const uint8_t DEVICE_NAME[] = "dominator-2";
 
-Serial pc(USBTX, USBRX);
+GameStatus status = {0};
 
-ssd1331* oled;
+//Serial pc(USBTX, USBRX);
+IM920 im920(USBTX, USBRX, NC, NC);
+char reqBuff[9] = {0x00};
+char resBuff[9] = {0x00};
+Timeout timeout;
+
+DisplayController* display;
+
 mcp23s08* ioxp;
 DigitalOut rst(P0_15);
 InterruptIn ioInt(P0_28);
 volatile bool interrupted = false;
-bool tick = false;
 neopixel_strip_t strip;
 uint8_t neoPixelPin = P0_10;
 uint8_t ledsPerStrip = 12;
@@ -28,21 +36,16 @@ uint8_t green = 0;
 uint8_t blue = 0;
 uint32_t n = 0;
 int8_t dir = 1;
+volatile uint8_t received = 0;
 
 TagDetector tagDetector;
 
-volatile uint8_t buttonR = 1;
-volatile uint8_t buttonY = 1;
 void updateButtonState () {
   uint8_t val = ioxp->readGpioPort();
   uint8_t bit1 = (val >> 2) & 0x01;
   uint8_t bit2 = (val >> 3) & 0x01;
-  buttonY = bit1 ? 0 : 1;
-  buttonR = bit2 ? 0 : 1;
-}
-
-
-void disconnectionCallback(const Gap::DisconnectionCallbackParams_t* params) {
+  status.buttons[GameStatus::TeamY] = bit1 ? 0 : 1;
+  status.buttons[GameStatus::TeamR] = bit2 ? 0 : 1;
 }
 
 void initNeoPixel () {
@@ -53,93 +56,81 @@ void initNeoPixel () {
   neopixel_set_color_and_show(&strip, 0, 80, 10, 10);
 }
 
+inline uint8_t clamp(uint16_t val, uint8_t max) {
+  if (val > max) return max;
+  return (uint8_t)val;
+}
+
 void radioNotificationCallback (bool radioEnabled) {
   if (!radioEnabled) {
     switch (tagDetector.getState()) {
       case TagDetector::TEAM_RED: 
-        red = 255;
-        green = 30;
-        blue = 30;
+        red = 235;
+        green = 10;
+        blue = 10;
         break;
       case TagDetector::TEAM_YELLOW: 
-        red = 225;
-        green = 225;
-        blue = 30;
+        red = 215;
+        green = 215;
+        blue = 10;
         break;
       default: 
-        red = 90;
-        green = 90;
-        blue = 80;
+        red = 80;
+        green = 80;
+        blue = 70;
         break;
     }
-    for (uint8_t p = 0; p < ledsPerStrip; ++p) {
-      neopixel_set_color(&strip, p, red - n*3, green - n*3, blue - n*3);
+    uint16_t mod = 0;
+    for (uint8_t r = 0; r < 3; ++r) {
+      for (uint8_t h = 0; h < 4; ++h) {
+        uint8_t i = (r == 1)? h : 3-h;
+        if (h == n) {
+          mod = 20;
+        } else {
+          mod = 0;
+        }
+        i = i + r*4;
+        neopixel_set_color(&strip, i, clamp(red+mod, 255), clamp(green+mod, 255), clamp(blue+mod, 255));
+      }
     }
-    __disable_irq();
+    //__disable_irq();
     neopixel_show(&strip);
-    __enable_irq();
-    n += dir;
-    if (dir > 0 && n >= 20) {
-      dir = -1;
-    } else if (dir < 0 && n == 0) {
-      dir = +1;
-    }
+    //__enable_irq();
+    n++;
+    n%=4;
   }
 }
 
+void imSendStatus () {
+  timeout.detach();
+  resBuff[0] = tagDetector.getState();
+  resBuff[1] = tagDetector.getCount(0);
+  resBuff[2] = tagDetector.getCount(1);
+  im920.sendData(resBuff, 8, 0);
+}
 
-
-void uartCB(void) {}
-
-
-uint32_t tickCount = 0;
-void tickerCallback() {
-
-  if (tick) {
-    ioxp->gpioPort(0b11000000);
-  } else {
-    ioxp->gpioPort(0b10000000);
+void uartCB(void) {
+  int re = im920.recv(reqBuff, 8);
+  if (reqBuff[0] == 0xCF) { // config
+    status.cfgSense = -1 * reqBuff[1];
+    tagDetector.setSenseLevel(status.cfgSense);
   }
+//  timeout.attach(imSendStatus, 0.05 * (rand() % 10));
+}
+
+void tickerCallback() {
   tagDetector.tick();
   updateButtonState();
+  status.state = tagDetector.getState();
+  status.teams[GameStatus::TeamR].detectedTags = tagDetector.getCount(GameStatus::TeamR);
+  status.teams[GameStatus::TeamY].detectedTags = tagDetector.getCount(GameStatus::TeamY);
+  status.clock++;
+  display->update();
 
-  oled->locate(89, 56);
-  if (buttonR) {
-    oled->foreground(0b1111100000000000);
-    oled->printf("*");
-  } else {
-    oled->printf(" ");
+  if (status.clock % 5 == 0) {
+    timeout.attach(imSendStatus, 0.05 * (rand() % 10));
   }
-  oled->locate(0, 56);
-  if (buttonY) {
-    oled->foreground(0b1111111111100000);
-    oled->printf("*");
-  } else {
-    oled->printf(" ");
-  }
-  oled->foreground(0xffff);
-  oled->locate(0, 0);
-  uint32_t seconds = tickCount / 5;
-  uint8_t minute = seconds / 60;
-  uint8_t sec = seconds % 60;
-  if (tickCount%5 == 0) {
-    tick = !tick;
-  }
-  if (tick) {
-    oled->printf("%02d:%02d ", minute, sec);
-  } else {
-    oled->printf("%02d %02d ", minute, sec);
-  }
-
-  oled->foreground(0b1111100000000000);
-  oled->printf("R:%02d ", tagDetector.getCount(TagDetector::TEAM_RED));
-
-  oled->foreground(0b1111111111100000);
-  oled->printf("Y:%02d", tagDetector.getCount(TagDetector::TEAM_YELLOW));
-
-  tickCount++;
 }
-
 
 void onStartDfu() {
   ble.stopScan();
@@ -158,18 +149,22 @@ void initIoxp() {
   ioxp->gpioPinMode(0b00001100);
   ioxp->portPullup(0b00001100);
 
-  ioxp->enableInterrupt(4, true);
+  ioxp->enableInterrupt(2, true);
+  ioxp->enableInterrupt(3, true);
   ioxp->readGpioPort(); // reset interrupt
   ioInt.mode(PullNone);
   ioInt.fall(&ioxpIntFall);
   ioInt.rise(&ioxpIntRise);
-  
-  ioxp->gpioPort(0b01000000);
-  wait_ms(200);
-  ioxp->gpioPort(0b00000000);
-  wait_ms(200);
-  ioxp->gpioPort(0b01000000);
+
+  ioxp->gpioPort(0b11110000);
+  wait_ms(100);
+  ioxp->gpioPort(0b11000000);
+  wait_ms(100);
+  ioxp->gpioPort(0b11110000);
+  wait_ms(100);
+  ioxp->gpioPort(0b11000000);
 }
+
 void reset() {
   rst = 1;
   wait_ms(100);
@@ -178,48 +173,33 @@ void reset() {
   rst = 1;
   wait_ms(100);
 }
-void initOled() {
-  oled = new ssd1331(P0_7, P0_15, P0_29, P0_4, P0_8, P0_5);
-  oled->set_font(NULL);
-}
 
 int main(void) {
   NRF_UART0->PSELRTS = 0xFFFFFFFFUL;
   NRF_UART0->PSELCTS = 0xFFFFFFFFUL;
 
-  const uint32_t reason = NRF_POWER->RESETREAS;
+  //const uint32_t reason = NRF_POWER->RESETREAS;
   NRF_POWER->RESETREAS = 0xffffffff;  // clear reason
                                       // reset cause should be shown everytime
-  pc.baud(9600);
-  pc.printf("init [%x] sp:%x\r\n", reason, GET_SP());
   reset();
-  initOled();
+  im920.init();
+  im920.attach(uartCB);
+  status.nodeId = im920.getNode();
+  display = new DisplayController(P0_7, P0_15, P0_29, P0_4, P0_8, P0_5);
+  display->setGameStatus(&status);
   initIoxp();
   initNeoPixel();
   ble.init();
-  ble.onDisconnection(disconnectionCallback);
-
-  pc.printf("Discover Init \r\n");
 
   Ticker ticker;
+  NVIC_SetPriority(UART0_IRQn, 1);
+  NVIC_SetPriority(TIMER1_IRQn, 2);
   ticker.attach(tickerCallback, 0.2);
 
   ble.setDeviceName(DEVICE_NAME);
 
-  /* Enable over-the-air firmware updates. Instantiating DFUSservice introduces
-   * a
-   * control characteristic which can be used to trigger the application to
-   * handover control to a resident bootloader. */
    /*
   DFUService dfu(ble, onStartDfu);
-
-  pc.printf("start advertising \r\n");
-  ble.accumulateAdvertisingPayload(GapAdvertisingData::BREDR_NOT_SUPPORTED);
-  ble.setAdvertisingType(GapAdvertisingParams::ADV_CONNECTABLE_UNDIRECTED);
-  ble.accumulateAdvertisingPayload(GapAdvertisingData::SHORTENED_LOCAL_NAME,
-                                   (const uint8_t*)"dom1", sizeof("dom1") - 1);
-  ble.setAdvertisingInterval(1000);
-  ble.startAdvertising();
   */
   ble.setScanInterval(33);
   ble.setScanWindow(16);
@@ -227,17 +207,10 @@ int main(void) {
   ble.gap().initRadioNotification();
   ble.onRadioNotification(radioNotificationCallback);
   
-  // ble.setActiveScan(true);
-  pc.printf("Discover Start \r\n");
+  // ble.gap().setActiveScan(true);
   ble.gap().startScan(&tagDetector, &TagDetector::scanCallback);
-  pc.printf("Discover called \r\n");
   while (1) {
+    im920.poll();
     ble.waitForEvent();
-    if (interrupted) { 
-      // ioInt.disable_irq();
-      interrupted = false;
-      // updateButtonState();
-      // ioInt.enable_irq();
-    }
   }
 }

@@ -43,6 +43,7 @@ TagDetector::TagDetector() {
   teams[0].type ='R';
   teams[1].type ='Y';
   nodeState = -1;
+  senseLevel = -66;
 } 
 
 void TagDetector::scanCallback(const Gap::AdvertisementCallbackParams_t* params) {
@@ -62,7 +63,7 @@ void TagDetector::scanCallback(const Gap::AdvertisementCallbackParams_t* params)
     const uint8_t value_length = record_length - 1;
 
     i += record_length;
-    if (value_length == 6 && memcmp(value, SERVICES, 6) == 0) {
+    if (value_length == 6 && memcmp(value, SERVICES, 6) == 0 && params->rssi > senseLevel) {
       Peripheral_t peri(params->peerAddr);
       std::pair<std::set<Peripheral_t>::iterator, bool> ret =
           devices.insert(peri);
