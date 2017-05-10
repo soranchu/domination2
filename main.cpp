@@ -12,6 +12,17 @@
 #include "GameStatus.h"
 
 BLE ble;
+PinName PIN_RST = P0_15;
+PinName PIN_MOSI = P0_4;
+PinName PIN_MISO = P0_8;
+PinName PIN_SCLK = P0_5;
+PinName PIN_IO_INT = P0_28;
+PinName PIN_LED = P0_10;
+PinName PIN_IO_CS = P0_6;
+PinName PIN_OLED_CS = P0_7;
+PinName PIN_OLED_DC = P0_29;
+
+
 static const uint8_t DEVICE_NAME[] = "dominator-2";
 
 GameStatus status = {0};
@@ -25,11 +36,10 @@ Timeout timeout;
 DisplayController* display;
 
 mcp23s08* ioxp;
-DigitalOut rst(P0_15);
-InterruptIn ioInt(P0_28);
+DigitalOut rst(PIN_RST);
+InterruptIn ioInt(PIN_IO_INT);
 volatile bool interrupted = false;
 neopixel_strip_t strip;
-uint8_t neoPixelPin = P0_10;
 uint8_t ledsPerStrip = 12;
 uint8_t red = 0;
 uint8_t green = 0;
@@ -40,18 +50,29 @@ volatile uint8_t received = 0;
 
 TagDetector tagDetector;
 
+void beep (uint8_t vol) {
+  if (vol) {
+    ioxp->gpioPort(0b11110000);
+  } else {
+    ioxp->gpioPort(0b11010000);
+  }
+  wait_ms(100);
+  ioxp->gpioPort(0b11000000);
+}
+
 void updateButtonState () {
   uint8_t val = ioxp->readGpioPort();
-  uint8_t bit1 = (val >> 2) & 0x01;
-  uint8_t bit2 = (val >> 3) & 0x01;
-  status.buttons[GameStatus::TeamY] = bit1 ? 0 : 1;
-  status.buttons[GameStatus::TeamR] = bit2 ? 0 : 1;
+  uint8_t bitR = (val >> 3) & 0x01;
+  uint8_t bitY = (val >> 2) & 0x01;
+  status.buttons[GameStatus::TeamY] = bitY ? 0 : 1;
+  status.buttons[GameStatus::TeamR] = bitR ? 0 : 1;
+  resBuff[3] = val;
 }
 
 void initNeoPixel () {
-  DigitalOut neoPixelOut(P0_10);
+  DigitalOut neoPixelOut(PIN_LED);
   // neoPixelOut = 1;
-  neopixel_init(&strip, neoPixelPin, ledsPerStrip);
+  neopixel_init(&strip, PIN_LED, ledsPerStrip);
   neopixel_clear(&strip);
   neopixel_set_color_and_show(&strip, 0, 80, 10, 10);
 }
@@ -63,13 +84,24 @@ inline uint8_t clamp(uint16_t val, uint8_t max) {
 
 void radioNotificationCallback (bool radioEnabled) {
   if (!radioEnabled) {
-    switch (tagDetector.getState()) {
-      case TagDetector::TEAM_RED: 
+    uint8_t r = status.buttons[GameStatus::TeamR];
+    uint8_t y = status.buttons[GameStatus::TeamY];
+    uint8_t s = 0xff;
+    if (r != y) {
+      if (r) {
+        s = GameStatus::TeamR;
+      } else {
+        s = GameStatus::TeamY;
+      }
+    } 
+//    uint8_t s = tagDetector.getState();
+    switch (s) {
+      case GameStatus::TeamR: 
         red = 235;
         green = 10;
         blue = 10;
         break;
-      case TagDetector::TEAM_YELLOW: 
+      case GameStatus::TeamY: 
         red = 215;
         green = 215;
         blue = 10;
@@ -107,6 +139,7 @@ void imSendStatus () {
   resBuff[1] = tagDetector.getCount(0);
   resBuff[2] = tagDetector.getCount(1);
   im920.sendData(resBuff, 8, 0);
+  //beep();
 }
 
 void uartCB(void) {
@@ -120,13 +153,15 @@ void uartCB(void) {
 
 void tickerCallback() {
   tagDetector.tick();
-  updateButtonState();
   status.state = tagDetector.getState();
   status.teams[GameStatus::TeamR].detectedTags = tagDetector.getCount(GameStatus::TeamR);
   status.teams[GameStatus::TeamY].detectedTags = tagDetector.getCount(GameStatus::TeamY);
   status.clock++;
-  display->update();
-
+  if (status.clock % 2 == 0) {
+    display->update();
+  } else {
+    updateButtonState();
+  }
   if (status.clock % 5 == 0) {
     timeout.attach(imSendStatus, 0.05 * (rand() % 10));
   }
@@ -143,7 +178,7 @@ void ioxpIntFall() {
   interrupted = true;
 }
 void initIoxp() {
-  ioxp = new mcp23s08(P0_4, P0_8, P0_5, P0_6, 0x20);
+  ioxp = new mcp23s08(PIN_MOSI, PIN_MISO, PIN_SCLK, PIN_IO_CS, 0x20);
 
   ioxp->begin();
   ioxp->gpioPinMode(0b00001100);
@@ -156,13 +191,9 @@ void initIoxp() {
   ioInt.fall(&ioxpIntFall);
   ioInt.rise(&ioxpIntRise);
 
-  ioxp->gpioPort(0b11110000);
+  beep(0);
   wait_ms(100);
-  ioxp->gpioPort(0b11000000);
-  wait_ms(100);
-  ioxp->gpioPort(0b11110000);
-  wait_ms(100);
-  ioxp->gpioPort(0b11000000);
+  beep(0);
 }
 
 void reset() {
@@ -185,9 +216,9 @@ int main(void) {
   im920.init();
   im920.attach(uartCB);
   status.nodeId = im920.getNode();
-  display = new DisplayController(P0_7, P0_15, P0_29, P0_4, P0_8, P0_5);
-  display->setGameStatus(&status);
+  display = new DisplayController(PIN_OLED_CS, PIN_RST, PIN_OLED_DC, PIN_MOSI, PIN_MISO, PIN_SCLK);
   initIoxp();
+  display->setGameStatus(&status);
   initNeoPixel();
   ble.init();
 

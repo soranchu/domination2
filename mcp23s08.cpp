@@ -22,7 +22,7 @@ mcp23s08::mcp23s08(PinName mosi,
   _intControl = 0x00;
 
   format(8, 3);
-  frequency(2 * 1000 * 1000); //2.4MHz
+  frequency(8 * 1000 * 1000); //10MHz
 
   postSetup(haenAdrs);
 }
@@ -180,7 +180,9 @@ uint8_t mcp23s08::readInterruptCapture() {
 
 /* ------------------------------ Low Level ----------------*/
 void mcp23s08::startSend(bool mode) {
+  wait_us(1);
   cs = 0;
+  wait_us(1);
   mode == 1 ? SPI::write(_readCmd) : SPI::write(_writeCmd);
 }
 
