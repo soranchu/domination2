@@ -1,7 +1,8 @@
 #include "DisplayController.h"
 #include "mbed.h"
 #include "ssd1331.h"
-
+static uint16_t COLOR_RED = 0b1111100000000000;
+static uint16_t COLOR_YEL = 0b1111111111100000;
 DisplayController::DisplayController (
     PinName cs, PinName rst, PinName mode, 
     PinName mosi, PinName miso, PinName sclk) {
@@ -13,23 +14,27 @@ DisplayController::DisplayController (
 
 void DisplayController::update() {
   oled->locate(89, 56);
-  if (status->buttons[GameStatus::TeamR]) {
-    oled->foreground(0b1111100000000000);
+  if (status->teams[GameStatus::TeamR].button) {
+    oled->foreground(COLOR_RED);
     oled->printf("*");
   } else {
     oled->printf(" ");
   }
   oled->locate(0, 56);
-  if (status->buttons[GameStatus::TeamY]) {
-    oled->foreground(0b1111111111100000);
+  if (status->teams[GameStatus::TeamY].button) {
+    oled->foreground(COLOR_YEL);
     oled->printf("*");
   } else {
     oled->printf(" ");
   }
 
-  oled->foreground(0xffff);
-  oled->locate(0, 8);
-  oled->printf("%2d", status->cfgSense);
+  oled->locate((uint8_t)(6*6.5), 8);
+  if (status->progress != 0) {
+    oled->foreground(status->attacker == GameStatus::TeamR ? COLOR_RED : COLOR_YEL);
+    oled->printf("%02d", status->progress);
+  } else {
+    oled->printf("  ");    
+  }
 //  oled->printf("%02X %02X", status->nodeId, status->current);
 
 
@@ -42,19 +47,29 @@ void DisplayController::update() {
     tick = !tick;
   }
 
+  oled->foreground(0xffff);
+  oled->locate(6*5, 0);
   if (tick) {
-    //ioxp->gpioPort(0b00110000);
-    oled->printf("%02d:%02d ", minute, sec);
+    oled->printf("%02d:%02d", minute, sec);
   } else {
-    //ioxp->gpioPort(0b00000000);
-    oled->printf("%02d %02d ", minute, sec);
+    oled->printf("%02d %02d", minute, sec);
   }
 
-  oled->foreground(0b1111100000000000);
-  oled->printf("R:%02d ", status->teams[GameStatus::TeamR].detectedTags);
+  oled->locate(0, 8);
+  oled->foreground(COLOR_RED);
+  oled->printf("%02d", status->teams[GameStatus::TeamR].tags);
 
-  oled->foreground(0b1111111111100000);
-  oled->printf("Y:%02d", status->teams[GameStatus::TeamY].detectedTags);
+  oled->locate(6*13, 8);
+  oled->foreground(COLOR_YEL);
+  oled->printf("%02d", status->teams[GameStatus::TeamY].tags);
+
+  oled->locate(0, 0);
+  oled->foreground(COLOR_RED);
+  oled->printf("%03d", status->teams[GameStatus::TeamR].point/5);
+
+  oled->locate(6*12, 0);
+  oled->foreground(COLOR_YEL);
+  oled->printf("%03d", status->teams[GameStatus::TeamY].point/5);
 }
 
 void DisplayController::setGameStatus(GameStatus* status) {

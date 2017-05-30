@@ -42,7 +42,7 @@ const TagDetector::Tag_t TagDetector::TAGS[] = {
 TagDetector::TagDetector() {
   teams[0].type ='R';
   teams[1].type ='Y';
-  nodeState = -1;
+  nodeState = 0xff;
   senseLevel = -66;
 } 
 
@@ -79,8 +79,7 @@ void TagDetector::scanCallback(const Gap::AdvertisementCallbackParams_t* params)
 }
 
 void TagDetector::tick() {
-  teams[TEAM_RED].tagCount = 0;
-  teams[TEAM_YELLOW].tagCount = 0;
+  uint8_t counts[2] = {0};
 
   for (uint8_t i = 0; i < TAG_SIZE; ++i) {
     TagStatus_t& s = statuses[i];
@@ -88,11 +87,14 @@ void TagDetector::tick() {
       s.visibleCount--;
     }
     if (s.visibleCount > 0) {
-      teams[tagIdxToTeam(i)].tagCount++;
+      counts[tagIdxToTeam(i)]++;
     }
   }
+  teams[TEAM_RED].tagCount = counts[TEAM_RED];
+  teams[TEAM_YELLOW].tagCount = counts[TEAM_YELLOW];
+
   if (teams[TEAM_RED].tagCount == teams[TEAM_YELLOW].tagCount) {
-    nodeState = -1;
+    nodeState = 0xff;
   } else if (teams[TEAM_RED].tagCount > teams[TEAM_YELLOW].tagCount) {
     nodeState = 0;
   } else {

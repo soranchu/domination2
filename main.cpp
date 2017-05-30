@@ -18,10 +18,12 @@ PinName PIN_MISO = P0_8;
 PinName PIN_SCLK = P0_5;
 PinName PIN_IO_INT = P0_28;
 PinName PIN_LED = P0_10;
+PinName PIN_SMLED = P0_19;
 PinName PIN_IO_CS = P0_6;
 PinName PIN_OLED_CS = P0_7;
 PinName PIN_OLED_DC = P0_29;
-
+DigitalIn dummyMiso(PIN_MISO, PullUp);
+DigitalIn dummyMosi(PIN_MOSI, PullUp);
 
 static const uint8_t DEVICE_NAME[] = "dominator-2";
 
@@ -37,6 +39,7 @@ DisplayController* display;
 
 mcp23s08* ioxp;
 DigitalOut rst(PIN_RST);
+DigitalOut smled(PIN_SMLED, PullUp);
 InterruptIn ioInt(PIN_IO_INT);
 volatile bool interrupted = false;
 neopixel_strip_t strip;
@@ -46,6 +49,7 @@ uint8_t green = 0;
 uint8_t blue = 0;
 uint32_t n = 0;
 int8_t dir = 1;
+uint8_t lastStatus = 0xff;
 volatile uint8_t received = 0;
 
 TagDetector tagDetector;
@@ -54,19 +58,21 @@ void beep (uint8_t vol) {
   if (vol) {
     ioxp->gpioPort(0b11110000);
   } else {
-    ioxp->gpioPort(0b11010000);
+    ioxp->gpioPort(0b11100000);
   }
-  wait_ms(100);
+  wait_ms((vol+1) * 30);
   ioxp->gpioPort(0b11000000);
 }
 
 void updateButtonState () {
   uint8_t val = ioxp->readGpioPort();
-  uint8_t bitR = (val >> 3) & 0x01;
-  uint8_t bitY = (val >> 2) & 0x01;
-  status.buttons[GameStatus::TeamY] = bitY ? 0 : 1;
-  status.buttons[GameStatus::TeamR] = bitR ? 0 : 1;
-  resBuff[3] = val;
+  if ((val & 0xc0) == 0xc0) {
+    uint8_t bitR = (val >> 3) & 0x01;
+    uint8_t bitY = (val >> 2) & 0x01;
+    status.teams[GameStatus::TeamY].button = bitY ? 0 : 1;
+    status.teams[GameStatus::TeamR].button = bitR ? 0 : 1;
+    resBuff[3] = val;
+  }
 }
 
 void initNeoPixel () {
@@ -77,33 +83,33 @@ void initNeoPixel () {
   neopixel_set_color_and_show(&strip, 0, 80, 10, 10);
 }
 
-inline uint8_t clamp(uint16_t val, uint8_t max) {
+inline uint8_t clamp(int16_t val, uint8_t max) {
+  if (val < 0) return 0;
   if (val > max) return max;
   return (uint8_t)val;
 }
 
 void radioNotificationCallback (bool radioEnabled) {
   if (!radioEnabled) {
-    uint8_t r = status.buttons[GameStatus::TeamR];
-    uint8_t y = status.buttons[GameStatus::TeamY];
-    uint8_t s = 0xff;
-    if (r != y) {
-      if (r) {
-        s = GameStatus::TeamR;
+    uint8_t s = status.current;
+
+    if (lastStatus != s) {
+      if (s != 0xff) {
+        beep(1);
       } else {
-        s = GameStatus::TeamY;
+        beep(0);
       }
-    } 
-//    uint8_t s = tagDetector.getState();
+      lastStatus = s;
+    }
     switch (s) {
       case GameStatus::TeamR: 
-        red = 235;
-        green = 10;
-        blue = 10;
+        red = 205;
+        green = 15;
+        blue = 15;
         break;
       case GameStatus::TeamY: 
-        red = 215;
-        green = 215;
+        red = 165;
+        green = 165;
         blue = 10;
         break;
       default: 
@@ -116,34 +122,44 @@ void radioNotificationCallback (bool radioEnabled) {
     for (uint8_t r = 0; r < 3; ++r) {
       for (uint8_t h = 0; h < 4; ++h) {
         uint8_t i = (r == 1)? h : 3-h;
+        /*
         if (h == n) {
           mod = 20;
         } else {
           mod = 0;
+        }*/
+        if (n < 20) {
+          mod = n - 20;
+        } else if ( n < 40) {
+          mod = 0;
+        } else {
+          mod = 40 - n;
         }
+        mod*=2;
         i = i + r*4;
         neopixel_set_color(&strip, i, clamp(red+mod, 255), clamp(green+mod, 255), clamp(blue+mod, 255));
       }
     }
-    //__disable_irq();
+    __disable_irq();
     neopixel_show(&strip);
-    //__enable_irq();
+    __enable_irq();
     n++;
-    n%=4;
+    n%=60;
   }
 }
 
 void imSendStatus () {
   timeout.detach();
-  resBuff[0] = tagDetector.getState();
-  resBuff[1] = tagDetector.getCount(0);
-  resBuff[2] = tagDetector.getCount(1);
+  resBuff[0] = status.current;
+  resBuff[1] = status.teams[GameStatus::TeamR].tags;
+  resBuff[2] = status.teams[GameStatus::TeamY].tags;
+  resBuff[3] = status.progress;
   im920.sendData(resBuff, 8, 0);
   //beep();
 }
 
 void uartCB(void) {
-  int re = im920.recv(reqBuff, 8);
+  im920.recv(reqBuff, 8);
   if (reqBuff[0] == 0xCF) { // config
     status.cfgSense = -1 * reqBuff[1];
     tagDetector.setSenseLevel(status.cfgSense);
@@ -151,14 +167,53 @@ void uartCB(void) {
 //  timeout.attach(imSendStatus, 0.05 * (rand() % 10));
 }
 
-void tickerCallback() {
+void calcGameStatus () {
+  uint8_t r = status.teams[GameStatus::TeamR].tags + status.teams[GameStatus::TeamR].button;
+  uint8_t y = status.teams[GameStatus::TeamY].tags + status.teams[GameStatus::TeamY].button;
+  uint8_t diff = 0;
+
+  if (status.current != 0xff) {
+    status.teams[status.current].point++;
+  }
+
+  if (r == y) {
+    status.decreaseProgress();
+    return;
+  }
+  
+  if (r > y) {
+    status.attacker = GameStatus::TeamR;
+    diff = r - y;
+  } else {
+    status.attacker = GameStatus::TeamY;
+    diff = y - r;
+  }
+
+  if (status.attacker == status.current) {
+    status.decreaseProgress();
+    return;
+  }
+
+  status.progress += diff;
+  if (status.progress > 50) {
+    status.current = status.attacker;
+    status.progress = 0;
+  }
+}
+void tickerCallback () {
   tagDetector.tick();
-  status.state = tagDetector.getState();
-  status.teams[GameStatus::TeamR].detectedTags = tagDetector.getCount(GameStatus::TeamR);
-  status.teams[GameStatus::TeamY].detectedTags = tagDetector.getCount(GameStatus::TeamY);
+  if (status.teams[GameStatus::TeamR].tags != tagDetector.getCount(GameStatus::TeamR) ||
+      status.teams[GameStatus::TeamY].tags != tagDetector.getCount(GameStatus::TeamY)) {
+    beep(1);
+  }
+  status.teams[GameStatus::TeamR].tags = tagDetector.getCount(GameStatus::TeamR);
+  status.teams[GameStatus::TeamY].tags = tagDetector.getCount(GameStatus::TeamY);
   status.clock++;
-  if (status.clock % 2 == 0) {
+  calcGameStatus();
+  if (status.clock % 5 == 0) {
+    smled = 0;
     display->update();
+    smled = 1;
   } else {
     updateButtonState();
   }
@@ -191,9 +246,9 @@ void initIoxp() {
   ioInt.fall(&ioxpIntFall);
   ioInt.rise(&ioxpIntRise);
 
-  beep(0);
+  beep(1);
   wait_ms(100);
-  beep(0);
+  beep(1);
 }
 
 void reset() {
@@ -212,6 +267,8 @@ int main(void) {
   //const uint32_t reason = NRF_POWER->RESETREAS;
   NRF_POWER->RESETREAS = 0xffffffff;  // clear reason
                                       // reset cause should be shown everytime
+  status.init();
+
   reset();
   im920.init();
   im920.attach(uartCB);
