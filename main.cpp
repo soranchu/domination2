@@ -91,6 +91,7 @@ inline uint8_t clamp(int16_t val, uint8_t max) {
 
 void radioNotificationCallback (bool radioEnabled) {
   if (!radioEnabled) {
+    updateButtonState();
     uint8_t s = status.current;
 
     if (lastStatus != s) {
@@ -155,7 +156,6 @@ void imSendStatus () {
   resBuff[2] = status.teams[GameStatus::TeamY].tags;
   resBuff[3] = status.progress;
   im920.sendData(resBuff, 8, 0);
-  //beep();
 }
 
 void uartCB(void) {
@@ -181,30 +181,38 @@ void calcGameStatus () {
     return;
   }
   
+  uint8_t attacker;
   if (r > y) {
-    status.attacker = GameStatus::TeamR;
+    attacker = GameStatus::TeamR;
     diff = r - y;
   } else {
-    status.attacker = GameStatus::TeamY;
+    attacker = GameStatus::TeamY;
     diff = y - r;
   }
 
-  if (status.attacker == status.current) {
+  if (attacker == status.current) {
     status.decreaseProgress();
     return;
   }
 
-  status.progress += diff;
+  if (attacker != status.attacker) {
+    status.resetProgress();
+    status.attacker = attacker;
+  }
+
+  status.increaseProgress(diff);
   if (status.progress > 50) {
     status.current = status.attacker;
-    status.progress = 0;
+    status.resetProgress();
   }
 }
 void tickerCallback () {
+  bool fullUpdate = false;
   tagDetector.tick();
   if (status.teams[GameStatus::TeamR].tags != tagDetector.getCount(GameStatus::TeamR) ||
       status.teams[GameStatus::TeamY].tags != tagDetector.getCount(GameStatus::TeamY)) {
     beep(1);
+    fullUpdate = true;
   }
   status.teams[GameStatus::TeamR].tags = tagDetector.getCount(GameStatus::TeamR);
   status.teams[GameStatus::TeamY].tags = tagDetector.getCount(GameStatus::TeamY);
@@ -212,10 +220,11 @@ void tickerCallback () {
   calcGameStatus();
   if (status.clock % 5 == 0) {
     smled = 0;
-    display->update();
+    display->update(true);
     smled = 1;
   } else {
-    updateButtonState();
+//    updateButtonState();
+    display->update(fullUpdate);
   }
   if (status.clock % 5 == 0) {
     timeout.attach(imSendStatus, 0.05 * (rand() % 10));

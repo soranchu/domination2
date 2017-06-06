@@ -10,7 +10,7 @@ public:
   DisplayController(
     PinName cs, PinName rst, PinName mode, 
     PinName mosi, PinName miso, PinName sclk);
-  void update();
+  void update(bool fullUpdate);
   void setGameStatus(GameStatus* status);
 private:
   ssd1331* oled;

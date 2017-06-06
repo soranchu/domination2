@@ -3,6 +3,8 @@
 #include "ssd1331.h"
 static uint16_t COLOR_RED = 0b1111100000000000;
 static uint16_t COLOR_YEL = 0b1111111111100000;
+static uint16_t COLOR_GL =  0b0000100000100001;
+static uint16_t COLOR_LGL = 0b0001100001100011;
 DisplayController::DisplayController (
     PinName cs, PinName rst, PinName mode, 
     PinName mosi, PinName miso, PinName sclk) {
@@ -12,7 +14,35 @@ DisplayController::DisplayController (
   tick = 0;
 }
 
-void DisplayController::update() {
+void DisplayController::update(bool fullUpdate) {
+  // draw progress
+  uint8_t margin = 4;
+  uint8_t top = 16;
+  uint8_t start = margin + 2; 
+  uint8_t w = width - margin - 2 - start;
+  uint16_t col_cur = 
+    status->current == 0xff ? COLOR_GL :
+    status->current == GameStatus::TeamR ? COLOR_RED : COLOR_YEL;
+  if (status->progress != 0) {
+    uint16_t col_att = 
+      status->decreasing ? COLOR_LGL : 
+      status->attacker == GameStatus::TeamR ? COLOR_RED : COLOR_YEL;
+    oled->fillrect(
+      start, top + margin + 2, 
+      (uint8_t)(start + status->progress * w / 50), top + margin + 20, 
+      col_att, col_att);
+    oled->fillrect(
+      (uint8_t)(start + status->progress * w / 50), top + margin + 2, 
+      start + w, top + margin + 20, 
+      col_cur, col_cur);
+  } else {
+    oled->fillrect(
+      start, top + margin + 2, 
+      start + w, top + margin + 20, 
+      col_cur, col_cur);
+  }
+
+  // draw button status
   oled->locate(89, 56);
   if (status->teams[GameStatus::TeamR].button) {
     oled->foreground(COLOR_RED);
@@ -28,16 +58,9 @@ void DisplayController::update() {
     oled->printf(" ");
   }
 
-  oled->locate((uint8_t)(6*6.5), 8);
-  if (status->progress != 0) {
-    oled->foreground(status->attacker == GameStatus::TeamR ? COLOR_RED : COLOR_YEL);
-    oled->printf("%02d", status->progress);
-  } else {
-    oled->printf("  ");    
-  }
-//  oled->printf("%02X %02X", status->nodeId, status->current);
-
-
+  if (!fullUpdate) return;
+  
+  // draw time
   oled->locate(0, 0);
   uint32_t seconds = status->clock / 5;
   uint8_t minute = seconds / 60;
@@ -48,28 +71,30 @@ void DisplayController::update() {
   }
 
   oled->foreground(0xffff);
-  oled->locate(6*5, 0);
+  oled->locate((uint8_t)(6*5.5), 0);
   if (tick) {
     oled->printf("%02d:%02d", minute, sec);
   } else {
     oled->printf("%02d %02d", minute, sec);
   }
 
+  // draw tag counts
   oled->locate(0, 8);
   oled->foreground(COLOR_RED);
   oled->printf("%02d", status->teams[GameStatus::TeamR].tags);
 
-  oled->locate(6*13, 8);
+  oled->locate(width - 6*2, 8);
   oled->foreground(COLOR_YEL);
   oled->printf("%02d", status->teams[GameStatus::TeamY].tags);
 
+  // draw points
   oled->locate(0, 0);
   oled->foreground(COLOR_RED);
-  oled->printf("%03d", status->teams[GameStatus::TeamR].point/5);
+  oled->printf("%04d", status->teams[GameStatus::TeamR].point/5);
 
-  oled->locate(6*12, 0);
+  oled->locate(width - 6*4, 0);
   oled->foreground(COLOR_YEL);
-  oled->printf("%03d", status->teams[GameStatus::TeamY].point/5);
+  oled->printf("%04d", status->teams[GameStatus::TeamY].point/5);
 }
 
 void DisplayController::setGameStatus(GameStatus* status) {

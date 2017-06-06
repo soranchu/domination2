@@ -17,6 +17,7 @@ struct GameStatus {
   uint32_t totalTime;
   TeamStatus teams[2];
   uint8_t progress;
+  bool decreasing;
   uint8_t current;
   uint8_t attacker;
   uint8_t state;
@@ -27,11 +28,21 @@ struct GameStatus {
     attacker = 0xff;
     progress = 0;
   }
+  void increaseProgress(uint8_t val) {
+    progress += val;
+    decreasing = false;
+  }
+  void resetProgress() {
+    progress = 0;
+    decreasing = false;
+  }
   void decreaseProgress() {
     if (progress > 2) {
       progress -= 2;
+      decreasing = true;
     } else {
       progress = 0;
+      decreasing = false;
     }
   }
 };
