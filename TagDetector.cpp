@@ -101,3 +101,9 @@ void TagDetector::tick() {
     nodeState = 1;
   }
 }
+
+void TagDetector::reset() {
+  teams[TEAM_RED].tagCount = 0;
+  teams[TEAM_YELLOW].tagCount = 0;
+  nodeState = 0xff;
+}

@@ -12,6 +12,7 @@ DisplayController::DisplayController (
   oled = new ssd1331(cs, rst, mode, mosi, miso, sclk);
   oled->set_font(NULL);
   tick = 0;
+  this->debugMessage[0] = '\0';
 }
 
 void DisplayController::update(bool fullUpdate) {
@@ -58,6 +59,12 @@ void DisplayController::update(bool fullUpdate) {
     oled->printf(" ");
   }
 
+  // draw debug message
+  if (this->debugMessage[0] != '\0') {
+    oled->foreground(0xffff);
+    oled->locate(0, 48);
+    oled->printf("%s", this->debugMessage);  
+  }
   if (!fullUpdate) return;
   
   // draw time
@@ -90,13 +97,31 @@ void DisplayController::update(bool fullUpdate) {
   // draw points
   oled->locate(0, 0);
   oled->foreground(COLOR_RED);
-  oled->printf("%04d", status->teams[GameStatus::TeamR].point/5);
+  oled->printf("%04d", status->teams[GameStatus::TeamR].totalPoint/5);
 
   oled->locate(width - 6*4, 0);
   oled->foreground(COLOR_YEL);
-  oled->printf("%04d", status->teams[GameStatus::TeamY].point/5);
+  oled->printf("%04d", status->teams[GameStatus::TeamY].totalPoint/5);
 }
 
 void DisplayController::setGameStatus(GameStatus* status) {
   this->status = status;
+}
+
+void DisplayController::debug(const char* msg) {
+  uint8_t len = strlen(msg);
+  len = len > 15 ? 15 : len;
+  memcpy(this->debugMessage, msg, len);
+  this->debugMessage[len] = '\0';
+}
+
+void DisplayController::debugHex(const char* msg, uint8_t l) {
+  uint8_t len = l;
+  len = len > 7 ? 7 : len;
+  char* p = this->debugMessage;
+  for (uint8_t i = 0; i < len; ++i) {
+    sprintf(p, "%02X", msg[i]);
+    p += 2;
+  }
+  *p = '\0';
 }

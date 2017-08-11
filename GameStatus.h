@@ -20,14 +20,26 @@ struct GameStatus {
   bool decreasing;
   uint8_t current;
   uint8_t attacker;
-  uint8_t state;
+  bool started;
   uint8_t nodeId;
   int8_t cfgSense;
-  void init() {
+
+  void reset() {
+    clock = 60 * 7 * 5;
+    totalTime = 0;
+    for(uint8_t i = 0; i < 2; ++i) {
+      teams[i].totalPoint = 0;
+      teams[i].point = 0;
+      teams[i].tags = 0;
+      teams[i].button = 0;
+    }
+    progress = 0;
+    decreasing = false;
     current = 0xff;
     attacker = 0xff;
-    progress = 0;
+    started = false;
   }
+
   void increaseProgress(uint8_t val) {
     progress += val;
     decreasing = false;

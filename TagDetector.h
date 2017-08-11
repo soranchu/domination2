@@ -10,6 +10,7 @@ public:
   TagDetector();
   void scanCallback(const Gap::AdvertisementCallbackParams_t* params);
   void tick();
+  void reset();
   uint8_t getState() {
     return nodeState; 
   }

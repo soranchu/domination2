@@ -10,6 +10,7 @@
 #include "IM920.h"
 #include "DisplayController.h"
 #include "GameStatus.h"
+#include "commands.h"
 
 BLE ble;
 PinName PIN_RST = P0_15;
@@ -31,8 +32,8 @@ GameStatus status = {0};
 
 //Serial pc(USBTX, USBRX);
 IM920 im920(USBTX, USBRX, NC, NC);
-char reqBuff[9] = {0x00};
-char resBuff[9] = {0x00};
+char reqBuff[12] = {0x00};
+char resBuff[12] = {0x00};
 Timeout timeout;
 
 DisplayController* display;
@@ -51,6 +52,7 @@ uint32_t n = 0;
 int8_t dir = 1;
 uint8_t lastStatus = 0xff;
 volatile uint8_t received = 0;
+uint32_t tick = 0;
 
 TagDetector tagDetector;
 
@@ -154,17 +156,54 @@ void imSendStatus () {
   resBuff[0] = status.current;
   resBuff[1] = status.teams[GameStatus::TeamR].tags;
   resBuff[2] = status.teams[GameStatus::TeamY].tags;
-  resBuff[3] = status.progress;
+  uint16_t* p16 = (uint16_t*)(resBuff+3); // [3][4]
+  *p16 = status.teams[GameStatus::TeamR].point;
+  p16 = (uint16_t*)(resBuff+5); // [5][6]
+  *p16 = status.teams[GameStatus::TeamY].point;
+  resBuff[7] = status.started;
+  //uint32_t* p32 = (uint32_t*)(resBuff+8); // [8][9][10][11]
+  //*p32 = status.clock;
   im920.sendData(resBuff, 8, 0);
+//  display->debugHex(resBuff, 12);
 }
 
 void uartCB(void) {
-  im920.recv(reqBuff, 8);
-  if (reqBuff[0] == 0xCF) { // config
+  im920.recv(reqBuff, 10);
+  uint16_t* p;
+  uint32_t* c;
+  switch (reqBuff[0]) {
+  case CMD_STATUS:
+    status.started = reqBuff[9] == 0x01;
+    p = (uint16_t*)(reqBuff+5);
+    status.teams[GameStatus::TeamR].totalPoint = *p;
+    p = (uint16_t*)(reqBuff+7);
+    status.teams[GameStatus::TeamY].totalPoint = *p;
+    c = (uint32_t*)(reqBuff+1);
+    status.clock = *c / 1000 * 5;
+    if (reqBuff[9] == 0x09) {
+      status.reset();
+      tagDetector.reset();
+    }
+    break;
+  case CMD_START:
+    status.started = true;
+    break;
+  case CMD_PAUSE:
+    status.started = false;
+    break;
+  case CMD_STOP:
+    status.started = false;
+    break;
+  case CMD_CFG:
     status.cfgSense = -1 * reqBuff[1];
     tagDetector.setSenseLevel(status.cfgSense);
+    break;
+  case CMD_RESET:
+    status.reset();
+    tagDetector.reset();
+    break;
   }
-//  timeout.attach(imSendStatus, 0.05 * (rand() % 10));
+  timeout.attach(imSendStatus, 0.1 + 0.06 * (rand() % 10));
 }
 
 void calcGameStatus () {
@@ -208,17 +247,22 @@ void calcGameStatus () {
 }
 void tickerCallback () {
   bool fullUpdate = false;
-  tagDetector.tick();
-  if (status.teams[GameStatus::TeamR].tags != tagDetector.getCount(GameStatus::TeamR) ||
-      status.teams[GameStatus::TeamY].tags != tagDetector.getCount(GameStatus::TeamY)) {
-    beep(1);
-    fullUpdate = true;
+  tick++;
+  if (status.started) {
+    tagDetector.tick();
+    if (status.teams[GameStatus::TeamR].tags != tagDetector.getCount(GameStatus::TeamR) ||
+        status.teams[GameStatus::TeamY].tags != tagDetector.getCount(GameStatus::TeamY)) {
+      beep(1);
+      fullUpdate = true;
+    }
+    status.teams[GameStatus::TeamR].tags = tagDetector.getCount(GameStatus::TeamR);
+    status.teams[GameStatus::TeamY].tags = tagDetector.getCount(GameStatus::TeamY);
+    if (status.clock > 0) {
+      status.clock--;
+    }
+    calcGameStatus();
   }
-  status.teams[GameStatus::TeamR].tags = tagDetector.getCount(GameStatus::TeamR);
-  status.teams[GameStatus::TeamY].tags = tagDetector.getCount(GameStatus::TeamY);
-  status.clock++;
-  calcGameStatus();
-  if (status.clock % 5 == 0) {
+  if (tick % 5 == 0) {
     smled = 0;
     display->update(true);
     smled = 1;
@@ -226,8 +270,8 @@ void tickerCallback () {
 //    updateButtonState();
     display->update(fullUpdate);
   }
-  if (status.clock % 5 == 0) {
-    timeout.attach(imSendStatus, 0.05 * (rand() % 10));
+  if (tick % 5 == 0) {
+    //timeout.attach(imSendStatus, 0.05 * (rand() % 10));
   }
 }
 
@@ -276,7 +320,7 @@ int main(void) {
   //const uint32_t reason = NRF_POWER->RESETREAS;
   NRF_POWER->RESETREAS = 0xffffffff;  // clear reason
                                       // reset cause should be shown everytime
-  status.init();
+  status.reset();
 
   reset();
   im920.init();
